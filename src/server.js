@@ -5,21 +5,86 @@ const express = require('express');
 const app = express();
 
 // Define the port the server will listen on
-// Use the environment variable PORT if available, otherwise default to 3000
 const PORT = process.env.PORT || 3000;
 
-// Define a simple route for the root URL ('/')
-// When a GET request is made to '/', this function will run
+// --- In-Memory API Data Store (MVP) ---
+// In a real app, this would come from a database.
+const apiCatalog = [
+  {
+    id: 'stripe-v1',
+    name: 'Stripe API',
+    category: 'Payments',
+    description: 'Process payments and manage subscriptions.',
+    docsUrl: 'https://stripe.com/docs/api',
+    tags: ['payments', 'billing', 'finance'],
+    status: 'active',
+    // Placeholder for metadata we might add later
+    metadata: {
+      latency_ms: 150,
+      uptime_percent: 99.99,
+      version: '2022-11-15'
+    }
+  },
+  {
+    id: 'twilio-sms-v1',
+    name: 'Twilio SMS API',
+    category: 'Communication',
+    description: 'Send and receive SMS messages.',
+    docsUrl: 'https://www.twilio.com/docs/sms/api',
+    tags: ['sms', 'messaging', 'communication'],
+    status: 'active',
+    metadata: {
+      latency_ms: 200,
+      uptime_percent: 99.95,
+      version: 'v1'
+    }
+  },
+  {
+    id: 'google-maps-js-v3',
+    name: 'Google Maps JavaScript API',
+    category: 'Mapping',
+    description: 'Display maps and geographic information.',
+    docsUrl: 'https://developers.google.com/maps/documentation/javascript/overview',
+    tags: ['maps', 'geolocation', 'places'],
+    status: 'active',
+    metadata: {
+      latency_ms: 100,
+      uptime_percent: 99.98,
+      version: '3.5x' // Example versioning
+    }
+  }
+  // Add more initial APIs here later if needed
+];
+// --- End In-Memory Data ---
+
+
+// --- API Endpoints ---
+
+// Root endpoint (unchanged)
 app.get('/', (req, res) => {
-  // Send a JSON response back to the client
   res.status(200).json({ message: 'LinkSphere MVP API is running!' });
 });
 
-// Start the server and make it listen for connections on the specified port
-app.listen(PORT, () => {
-  console.log(`Server is listening on port ${PORT}`);
-  console.log(`Access it at: http://localhost:${PORT}`);
+// New endpoint to get the list of APIs
+// GET /apis
+app.get('/apis', (req, res) => {
+  // For now, just return the entire catalog
+  // Later, we can add filtering, pagination etc.
+  res.status(200).json({
+    count: apiCatalog.length,
+    data: apiCatalog
+  });
 });
 
-// Export the app instance (useful for testing later)
+// --- End API Endpoints ---
+
+
+// Start the server (unchanged)
+app.listen(PORT, () => {
+  console.log(`Server is listening on port ${PORT}`);
+  console.log(`Access root at: http://localhost:${PORT}`);
+  console.log(`Access APIs at: http://localhost:${PORT}/apis`); // Added this line
+});
+
+// Export the app instance (unchanged)
 module.exports = app;

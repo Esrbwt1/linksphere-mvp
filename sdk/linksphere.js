@@ -1,105 +1,109 @@
-// Import the axios library for making HTTP requests
+// Import the axios library
 const axios = require('axios');
 
-// Define the base URL for the LinkSphere API server
-const API_BASE_URL = 'http://localhost:3000'; // We might make this configurable later
+// Base URL
+const API_BASE_URL = 'http://localhost:3000';
 
 /**
- * LinkSphere SDK Client Class (Basic MVP Version)
+ * LinkSphere SDK Client Class (Now with API Key)
  */
 class LinkSphereClient {
+  /**
+   * Creates an instance of the LinkSphere Client.
+   * @param {object} config - Configuration object.
+   * @param {string} [config.apiKey] - Your LinkSphere API Key. Required for protected operations.
+   * @param {string} [config.baseUrl] - Optional base URL override.
+   */
   constructor(config = {}) {
-    this.apiKey = config.apiKey || null;
+    this.apiKey = config.apiKey || null; // Store the API Key
     this.baseUrl = config.baseUrl || API_BASE_URL;
+
+    // Create an Axios instance with default headers
+    this.axiosInstance = axios.create({
+      baseURL: this.baseUrl,
+      headers: {
+        'Content-Type': 'application/json'
+        // We will add the API key header per-request if available
+      }
+    });
   }
 
+  // --- Private method to get request headers ---
+  _getHeaders() {
+      const headers = {};
+      if (this.apiKey) {
+          headers['X-API-Key'] = this.apiKey;
+      } else {
+          console.warn('[SDK] Warning: API Key not provided to client. Protected calls may fail.');
+      }
+      return headers;
+  }
+
+
   /**
-   * Fetches the list of available APIs from the LinkSphere Discovery Hub.
-   * @returns {Promise<object>} A promise that resolves with the API catalog data.
+   * Fetches the list of available APIs (Public endpoint - no key needed).
+   * @returns {Promise<object>}
    */
   async discoverApis() {
     try {
-      const response = await axios.get(`${this.baseUrl}/apis`);
-      if (response.status === 200) {
-        return response.data;
-      } else {
-        throw new Error(`Failed to fetch APIs. Status: ${response.status}`);
-      }
-    } catch (error) {
-      console.error('Error fetching APIs from LinkSphere:', error.message);
-      if (error.response) {
-        throw new Error(`LinkSphere API request failed: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
-      } else if (error.request) {
-         throw new Error(`LinkSphere API request failed: No response received from ${this.baseUrl}. Is the server running?`);
-      } else {
-        throw new Error(`LinkSphere SDK error: ${error.message}`);
-      }
+      // Use the internal axios instance, no custom headers needed here
+      const response = await this.axiosInstance.get('/apis');
+      if (response.status === 200) { return response.data; }
+      else { throw new Error(`Failed to fetch APIs. Status: ${response.status}`); }
+    } catch (error) { /* ... keep existing error handling ... */
+      console.error('Error fetching APIs:', error.message);
+      if (error.response) { throw new Error(`API request failed: ${error.response.status} - ${JSON.stringify(error.response.data)}`); }
+      else if (error.request) { throw new Error(`API request failed: No response from ${this.baseUrl}. Server running?`); }
+      else { throw new Error(`SDK error: ${error.message}`); }
     }
   }
 
   /**
-   * Simulates calling a single API via the LinkSphere gateway (including security check).
-   * This uses the /api/call-simulation endpoint for the MVP.
-   * @param {object} callDetails - Details needed for the call.
-   * @param {string} callDetails.apiId - The ID of the API to call.
-   * @param {object} callDetails.params - Parameters for the API call.
-   * @param {object} callDetails.userContext - Context about the user/caller.
-   * @returns {Promise<object>} A promise resolving with the simulation result or rejecting on error/block.
+   * Simulates calling a single API (Protected endpoint - needs key).
+   * @param {object} callDetails - { apiId, params, userContext }
+   * @returns {Promise<object>}
    */
   async callApi(callDetails) {
      console.warn('[SDK] Note: callApi() currently uses the MVP simulation endpoint.');
      try {
-         const response = await axios.post(`${this.baseUrl}/api/call-simulation`, callDetails);
-         // The simulation endpoint returns 200 for success, 403 for blocked.
-         // Axios throws for non-2xx statuses by default, which is handled in the catch block.
-         return response.data; // Contains { status: 'success', ... }
-     } catch (error) {
-        console.error(`Error calling API ${callDetails.apiId} via LinkSphere:`, error.message);
-        if (error.response && error.response.status === 403) {
-             // Specifically handle the blocked case from the simulation endpoint
-             console.error(`API call blocked by security policy: ${error.response.data.reason}`);
-             throw new Error(`Blocked: ${error.response.data.reason}`); // Re-throw a simpler error
-         } else if (error.response) {
-             throw new Error(`LinkSphere API request failed: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
-         } else if (error.request) {
-             throw new Error(`LinkSphere API request failed: No response received from ${this.baseUrl}. Is the server running?`);
-         } else {
-             throw new Error(`LinkSphere SDK error: ${error.message}`);
-         }
+         // Use the internal axios instance and add the API Key header
+         const response = await this.axiosInstance.post(`/api/call-simulation`, callDetails, {
+             headers: this._getHeaders() // Add API key header if available
+         });
+         return response.data;
+     } catch (error) { /* ... keep existing error handling, including 401/403 checks... */
+        console.error(`Error calling API ${callDetails.apiId}:`, error.message);
+         if (error.response && (error.response.status === 403 || error.response.status === 401)) {
+             console.error(`API call failed (Auth): ${error.response.data.error}`);
+             throw new Error(`Auth Failed: ${error.response.data.error}`);
+         } else if (error.response) { throw new Error(`API request failed: ${error.response.status} - ${JSON.stringify(error.response.data)}`); }
+         else if (error.request) { throw new Error(`API request failed: No response from ${this.baseUrl}. Server running?`); }
+         else { throw new Error(`SDK error: ${error.message}`); }
      }
   }
 
 
   /**
-   * Simulates orchestrating a workflow (sequence of API calls) via LinkSphere.
-   * Sends the workflow definition to the /api/orchestrate-simulation endpoint.
-   * @param {object} workflow - The workflow definition.
-   * @param {string} workflow.name - Name of the workflow.
-   * @param {object[]} workflow.steps - An array of API call steps. Each step needs apiId, params.
-   * @param {object} workflow.userContext - Context for the entire workflow execution.
-   * @returns {Promise<object>} A promise resolving with the orchestration result.
+   * Simulates orchestrating a workflow (Protected endpoint - needs key).
+   * @param {object} workflow - { name, steps, userContext }
+   * @returns {Promise<object>}
    */
   async orchestrateWorkflow(workflow) {
     console.log(`[SDK] Attempting to orchestrate workflow: ${workflow.name}`);
     try {
-      // Make a POST request to the new orchestration simulation endpoint
-      const response = await axios.post(`${this.baseUrl}/api/orchestrate-simulation`, workflow);
-
-      if (response.status === 200) {
-        return response.data; // Contains { status: 'success'/'partial'/'failed', results: [...] }
-      } else {
-        // Should be caught by the catch block, but included for completeness
-        throw new Error(`Failed to orchestrate workflow. Status: ${response.status}`);
-      }
-    } catch (error) {
-      console.error(`Error orchestrating workflow ${workflow.name}:`, error.message);
-       if (error.response) {
-            throw new Error(`LinkSphere Orchestration request failed: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
-        } else if (error.request) {
-            throw new Error(`LinkSphere Orchestration request failed: No response received from ${this.baseUrl}. Is the server running?`);
-        } else {
-            throw new Error(`LinkSphere SDK error: ${error.message}`);
-        }
+       // Use the internal axios instance and add the API Key header
+       const response = await this.axiosInstance.post(`/api/orchestrate-simulation`, workflow, {
+           headers: this._getHeaders() // Add API key header if available
+       });
+       return response.data;
+    } catch (error) { /* ... keep existing error handling ... */
+       console.error(`Error orchestrating workflow ${workflow.name}:`, error.message);
+       if (error.response && (error.response.status === 403 || error.response.status === 401)) {
+             console.error(`Orchestration failed (Auth): ${error.response.data.error}`);
+             throw new Error(`Auth Failed: ${error.response.data.error}`);
+       } else if (error.response) { throw new Error(`Orchestration request failed: ${error.response.status} - ${JSON.stringify(error.response.data)}`); }
+       else if (error.request) { throw new Error(`Orchestration request failed: No response from ${this.baseUrl}. Server running?`); }
+       else { throw new Error(`SDK error: ${error.message}`); }
     }
   }
 

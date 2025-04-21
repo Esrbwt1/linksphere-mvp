@@ -1,9 +1,15 @@
+require('dotenv').config();
 // Import the LinkSphere SDK client
 const LinkSphereClient = require('./sdk/linksphere');
 
-// Create a new instance of the client
-const client = new LinkSphereClient();
-
+// --- Get API Key from environment ---
+const apiKey = process.env.LINKSPEHERE_MVP_API_KEY;
+if (!apiKey) {
+    console.error("Error: LINKSPEHERE_MVP_API_KEY not found in environment variables. Make sure .env file is setup.");
+    process.exit(1);
+}
+// --- Create a new instance of the client WITH the API Key ---
+const client = new LinkSphereClient({ apiKey: 'BAD-KEY-XYZ' });
 // --- Workflow Definitions ---
 
 // Example 1: Successful Payment and Notification (Unchanged)
